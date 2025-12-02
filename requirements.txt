@@ -1,0 +1,6 @@
+networkx
+scikit-fuzzy
+paho-mqtt
+numpy
+matplotlib
+flask
