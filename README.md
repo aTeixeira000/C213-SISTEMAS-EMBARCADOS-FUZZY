@@ -281,4 +281,5 @@ No projeto atual:
 
 - `c213/crac/estado` cumpre o papel de **temp + control**, pois reúne temperatura, potência e demais variáveis relevantes.  
 - `c213/crac/setpoint`, `c213/crac/comando` e `c213/crac/injecao` detalham os canais de **controle** de forma mais granular.  
-- Um tópico `datacenter/fuzzy/alert` pode ser facilmente adicionado no futuro, publicando alertas quando a temperatura sair da faixa segura (por exemplo, T < 18 °C ou T > 26 °C).
+- O tópico `datacenter/fuzzy/alert` foi implementado conforme a especificação, sendo utilizado para publicar alertas críticos sempre que a temperatura interna sai da faixa de operação segura.
+
