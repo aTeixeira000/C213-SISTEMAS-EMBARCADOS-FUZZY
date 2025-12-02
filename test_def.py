@@ -34,6 +34,27 @@ erroanterior = erroatual
 simulacao_ativa = False # Estado inicial: Parado
 reiniciar_simulacao = False
 
+# Variável para controlar o ciclo de 24h
+simulacao_24h_ativa = False
+
+# --- ADICIONE ESTAS FUNÇÕES NO TOPO DO CÓDIGO FUZZY (APÓS AS VARIÁVEIS GLOBAIS) ---
+
+def perturba_text_24h(iteracao):
+    # Simula uma onda senoidal (ciclo de 24 horas)
+    tempo_em_horas = iteracao * (24 / 288) 
+    # Modelo T_ext: Média de 25°C, Amplitude de 10°C.
+    return 25 + 10 * np.sin((tempo_em_horas - 8) * np.pi / 12)
+
+def perturba_carga_24h(iteracao):
+    # Simula a Carga Térmica com degraus (Alta durante o dia)
+    tempo_em_horas = iteracao * (24 / 288)
+    
+    if 8 <= tempo_em_horas < 18:
+        # Horário comercial/pico de uso: Carga Alta (90%)
+        return 90
+    else:
+        # Noite/Madrugada: Carga Baixa (30%)
+        return 30
 
 # =====================================================================
 # 1. FUNÇÕES FUZZY (FPs, REGRAS E SISTEMAS)
@@ -187,7 +208,7 @@ def resetar_estado():
     print("\n--- Estado da Simulação RESETADO ---\n")
 
 def on_message(client, userdata, msg):
-    global sp, simulacao_ativa, reiniciar_simulacao, injecao_ativa, erro_inj, deltaErro_inj, text_inj, carga_inj
+    global sp, simulacao_ativa, reiniciar_simulacao, injecao_ativa, erro_inj, deltaErro_inj, text_inj, carga_inj, simulacao_24h_ativa
     
     try:
         payload = msg.payload.decode("utf-8")
@@ -211,6 +232,10 @@ def on_message(client, userdata, msg):
                 
             elif comando == "limpar_grafico":
                 reiniciar_simulacao = True # Sinaliza reset no próximo loop ativo
+
+            elif comando == "iniciar_24h": # <--- NOVO COMANDO AQUI
+                simulacao_24h_ativa = True
+                print("[MQTT] Simulação de 24h solicitada.")
         
         if msg.topic == TOPIC_INJECAO:
             try:
@@ -257,7 +282,104 @@ VARERRO_MAX = 2.05
 
 print(f"Sistema Fuzzy Iniciado. SP={sp}°C. Aguardando comando INICIAR via MQTT...")
 
+# =====================================================================
+# 4. FUNÇÃO DE SIMULAÇÃO DE 24H (BLOCO ÚNICO)
+# =====================================================================
+
+def executar_simulacao_24h():
+    global tempatual, erroatual, erroanterior, simulacao_24h_ativa
+    
+    MAX_ITERACOES = 288
+    iteracao = 0 
+    
+    print(f"\n--- INICIANDO SIMULAÇÃO DE 24H (Ciclo Fechado) ---")
+    
+    # ⚠️ RESET INICIAL OBRIGATÓRIO PARA 24H
+    resetar_estado() 
+    tempatual = 25.0 
+
+    while iteracao < MAX_ITERACOES:
+        
+        # O ciclo de 24h é sempre um cálculo dinâmico, sem injeção manual.
+        injecao_ativa = False
+        
+        # 1. ATUALIZAÇÃO DAS PERTURBAÇÕES
+        text_calc = perturba_text_24h(iteracao)
+        carga_calc = perturba_carga_24h(iteracao)
+        
+        # 2. CÁLCULO DE ERRO
+        erro_calc = tempatual - sp
+        varerroTemp_calc = erroatual - erroanterior
+        
+        # --- CÁLCULO DE FLUXO (COPIADO DO while True) ---
+        
+        # Atualiza o erroanterior (necessário para a próxima iteração dinâmica)
+        erroanterior = erroatual # Mantemos a variável para o modo dinâmico
+        erroatual = erro_calc # Atualiza o erroatual para o print
+        
+        # Saturação das entradas (APLICADA ÀS VARIÁVEIS DE CÁLCULO)
+        erro_input = np.clip(erro_calc, -ERRO_MAX, ERRO_MAX)
+        varerro_input = np.clip(varerroTemp_calc, -VARERRO_MAX, VARERRO_MAX)
+
+        # --- 3.3. GANHO KP CONDICIONAL (Mapa Otimizado) ---
+        if sp == 16: Kp = 0.57
+        elif sp == 22: Kp = 0.28
+        elif sp == 25: Kp = 0.09
+        elif sp == 32: Kp = 0.01
+        else: Kp = 0.35
+
+        # --- 3.4. CÁLCULO FUZZY ---
+        simulacao_nucleo.input['errotemp'] = erro_input
+        simulacao_nucleo.input['varerrotemp'] = varerro_input
+        simulacao_nucleo.compute()
+
+        if 'potencia_base' in simulacao_nucleo.output:
+            P_base = simulacao_nucleo.output['potencia_base']
+        else:
+            P_base = 100.0
+        simulacao_nucleo.reset()
+
+        simulacao_compensacao.input['text'] = text_calc 
+        simulacao_compensacao.input['cargatermica'] = carga_calc
+        simulacao_compensacao.compute()
+        Delta_P = simulacao_compensacao.output['ajuste_potencia']
+        simulacao_compensacao.reset()
+
+        # --- 3.5. INTEGRAÇÃO E CLIPPING ---
+        P_base_atenuada = P_base * Kp
+        P_final = P_base_atenuada + Delta_P
+        P_crac_final = np.clip(P_final, 0, 100)
+        
+        # --- 3.6. MODELO TÉRMICO ---
+        T_anterior = tempatual
+        tempatual = (0.9 * T_anterior - 0.08 * P_crac_final + 0.05 * carga_calc + 0.02 * text_calc + 0.35)
+
+        # PUBLICAÇÃO DO ESTADO
+        estado = {
+            "temperatura": round(float(tempatual), 2),
+            "erro": round(float(erroatual), 2),
+            "varErro": round(float(varerroTemp_calc), 2),
+            "potencia": round(float(P_crac_final), 2),
+            "setpoint": sp,
+            "qest": round(float(carga_calc), 1), # Publica o valor da perturbação
+            "text": round(float(text_calc), 1),  # Publica o valor da perturbação
+            "simulacao_rodando": True, # A simulação está rodando no modo 24h
+            "injecao_ativa": False,
+             "tempo_horas": round(iteracao * (24 / MAX_ITERACOES), 2)
+        }
+        client.publish(TOPIC_ESTADO, json.dumps(estado))
+        
+        time.sleep(0.05) 
+        iteracao += 1
+    
+    print("\n--- SIMULAÇÃO DE 24H CONCLUÍDA! ---")
+    simulacao_24h_ativa = False # Desliga a flag no final
+
 while True:
+
+    if simulacao_24h_ativa:
+        executar_simulacao_24h()
+        # Após a simulação de 24h, ele volta a ser uma simulação parada.
     
     # 1. VERIFICAÇÃO DE CONTROLE E RESET (PRIORIDADE MÁXIMA)
     if reiniciar_simulacao:
@@ -306,7 +428,7 @@ while True:
 
     # --- 3.3. GANHO KP CONDICIONAL (Mapa Otimizado) ---
     if sp == 16:
-        Kp = 0.57
+        Kp = 0.56
     elif sp == 22:
         Kp = 0.28
     elif sp == 25:
@@ -357,8 +479,8 @@ while True:
         "varErro": round(float(varerroTemp_calc), 2),
         "potencia": round(float(P_crac_final), 2),
         "setpoint": sp,
-        "qest": qest_atual,
-        "text": text_atual,
+        "qest": round(float(carga_calc), 1),
+        "text": round(float(text_calc), 1),
         "simulacao_rodando": simulacao_ativa,
         "injecao_ativa": injecao_ativa
     }

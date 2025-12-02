@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dashboard CRAC - Fuzzy C213</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111827;
+      color: #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    .status {
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    .sp-controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .sp-button {
+      background: #1f2937;
+      color: #e5e7eb;
+      border: 1px solid #374151;
+      border-radius: 999px;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s, transform 0.1s, border-color 0.2s;
+    }
+    .sp-button:hover {
+      background: #2563eb;
+      transform: translateY(-1px);
+    }
+    .sp-button.active {
+      background: #3b82f6;
+      border-color: #60a5fa;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(180px, 220px));
+      gap: 16px;
+      margin-top: 10px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: #1f2937;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+    }
+    .card-title {
+      font-size: 14px;
+      color: #9ca3af;
+      margin-bottom: 8px;
+    }
+    .card-value {
+      font-size: 28px;
+      font-weight: bold;
+    }
+    .unit {
+      font-size: 16px;
+      color: #9ca3af;
+      margin-left: 4px;
+    }
+    .small {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 4px;
+    }
+    .chart-container {
+      width: 100%;
+      max-width: 800px;
+      background: #020617;
+      border-radius: 16px;
+      padding: 12px 16px 20px 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    canvas {
+      max-width: 100%;
+    }
+    #control-buttons button {
+      background: #1f2937;
+      color: #e5e7eb;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #control-buttons button:hover:not(:disabled) {
+      background: #2563eb;
+    }
+    #control-buttons button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+    .alert-banner {
+      display: none;
+      margin-bottom: 12px;
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: #7f1d1d;
+      border: 1px solid #fecaca;
+      color: #fee2e2;
+      max-width: 800px;
+      width: 100%;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+      font-size: 14px;
+    }
+    .alert-banner strong {
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Dashboard CRAC - Fuzzy C213</h1>
+  <div class="status" id="status">Status: carregando...</div>
+
+  <div id="alert-banner" class="alert-banner">
+    <strong>Alerta:</strong>
+    <span id="alert-message">Nenhum alerta no momento.</span>
+  </div>
+
+  <!-- Controles de setpoint -->
+  <div class="sp-controls">
+    <button class="sp-button" data-sp="16">SP = 16°C</button>
+    <button class="sp-button" data-sp="22">SP = 22°C</button>
+    <button class="sp-button" data-sp="25">SP = 25°C</button>
+    <button class="sp-button" data-sp="32">SP = 32°C</button>
+  </div>
+
+  <section id="control-buttons" style="display: flex; gap: 8px; margin-bottom: 20px;">
+    <h3>Controle da Simulação</h3>
+    <button class="sp-button" onclick="enviarComando('iniciar')">▶️ Iniciar Simulação</button>
+    <button class="sp-button" onclick="enviarComando('parar')">⏹️ Parar Simulação</button>
+    <button class="sp-button" onclick="enviarComando('limpar_grafico')">🔄 Limpar Gráfico e Resetar</button>
+  </section>
+
+  <section id="manual-input" style="margin-top: 20px; padding: 15px; border: 1px solid #374151; border-radius: 8px;">
+    <h3>Injeção Manual de Variáveis (Apenas quando a simulação estiver PARADA)</h3>
+    <div style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; margin-bottom: 10px;">
+        
+        <div style="display: flex; flex-direction: column;">
+            <label for="inputErro">Erro [-16 a 16.5]:</label>
+            <input type="number" id="inputErro" value="0" step="0.1" style="padding: 5px; width: 100px; background: #374151; color: white;">
+        </div>
+
+        <div style="display: flex; flex-direction: column;">
+            <label for="inputDeltaErro">ΔErro [-2 a 2.05]:</label>
+            <input type="number" id="inputDeltaErro" value="0" step="0.05" style="padding: 5px; width: 100px; background: #374151; color: white;">
+        </div>
+
+        <div style="display: flex; flex-direction: column;">
+            <label for="inputText">Temp. Externa [10 a 40°C]:</label>
+            <input type="number" id="inputText" value="25" min="10" max="40" style="padding: 5px; width: 100px; background: #374151; color: white;">
+        </div>
+
+        <div style="display: flex; flex-direction: column;">
+            <label for="inputCarga">Carga Térmica [0 a 100%]:</label>
+            <input type="number" id="inputCarga" value="40" min="0" max="100" style="padding: 5px; width: 100px; background: #374151; color: white;">
+        </div>
+    </div>
+    <button class="sp-button" onclick="enviarDadosManuais()" id="btnEnviarManual">Enviar Entradas</button>
+  </section>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-title">Temperatura Atual</div>
+      <div class="card-value">
+        <span id="temp">--</span><span class="unit">°C</span>
+      </div>
+      <div class="small">Setpoint: <span id="sp">--</span> °C</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Potência CRAC</div>
+      <div class="card-value">
+        <span id="pot">--</span><span class="unit">%</span>
+      </div>
+      <div class="small">Carga térmica fixa: <span id="qest">--</span>% | Text: <span id="text">--</span>°C</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Erro</div>
+      <div class="card-value">
+        <span id="erro">--</span>
+      </div>
+      <div class="small">T - SP</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Variação do Erro</div>
+      <div class="card-value">
+        <span id="varErro">--</span>
+      </div>
+      <div class="small">Δerro por iteração</div>
+    </div>
+  </div>
+
+  <div class="chart-container">
+    <canvas id="tempChart" height="160"></canvas>
+  </div>
+
+  <button class="sp-button" onclick="enviarComando24h()">📊 Simulação 24h (Ciclo Completo)</button>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const statusEl  = document.getElementById('status');
+    const tempEl    = document.getElementById('temp');
+    const potEl     = document.getElementById('pot');
+    const erroEl    = document.getElementById('erro');
+    const varErroEl = document.getElementById('varErro');
+    const spEl      = document.getElementById('sp');
+    const qestEl    = document.getElementById('qest');
+    const textEl    = document.getElementById('text');
+    const alertBanner   = document.getElementById('alert-banner');
+    const alertMessageEl = document.getElementById('alert-message');
+
+    // 1. Variáveis DOM para os botões de controle
+    const btnIniciar = document.querySelector('button[onclick="enviarComando(\'iniciar\')"]');
+    const btnParar = document.querySelector('button[onclick="enviarComando(\'parar\')"]');
+    const btnLimpar = document.querySelector('button[onclick="enviarComando(\'limpar_grafico\')"]');
+    const controlSection = document.getElementById('control-buttons');
+
+    const spButtons   = document.querySelectorAll('.sp-button');
+
+    let chart;
+    let samplesCount = 0;
+
+    // 2. FUNÇÃO AUXILIAR PARA ATUALIZAR O ESTADO VISUAL
+    function atualizarStatusControle(rodando) {
+      if (btnIniciar) {
+          btnIniciar.disabled = rodando;
+          btnParar.disabled = !rodando;
+
+          if (rodando) {
+              statusEl.textContent = 'Status: SIMULAÇÃO RODANDO | Recebendo dados (MQTT)';
+          } else {
+              statusEl.textContent = 'Status: SIMULAÇÃO PARADA | Clique em Iniciar.';
+          }
+      }
+      // O botão Limpar é sempre acessível.
+    }
+
+    function enviarComando(comando) {
+        fetch('/controle', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 'comando': comando }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Comando ' + comando + ' enviado:', data);
+            
+            if (comando === 'limpar_grafico') {
+                // Lógica JS para limpar o gráfico.
+                samplesCount = 0; // Zera o contador de amostras
+                chart.data.labels = []; 
+                chart.data.datasets.forEach((dataset) => { dataset.data = []; }); 
+                chart.update();
+                alert('Sinal de reset enviado. Gráfico limpo.');
+            }
+        })
+        .catch((error) => {
+            console.error('Erro ao enviar comando:', error);
+        });
+    }
+
+    function setupChart() {
+      const ctx = document.getElementById('tempChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Temperatura (°C)',
+              data: [],
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59,130,246,0.15)',
+              tension: 0.2,
+              pointRadius: 0
+            },
+            {
+              label: 'Setpoint (°C)',
+              data: [],
+              borderColor: '#f97316',
+              borderDash: [6, 4],
+              tension: 0,
+              pointRadius: 0
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          animation: false,
+          scales: {
+            x: {
+              display: false
+            },
+            y: {
+              beginAtZero: false,
+              suggestedMin: 10,
+              suggestedMax: 40,
+              ticks: {
+                color: '#9ca3af'
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: {
+                color: '#e5e7eb'
+              }
+            }
+          }
+        }
+      });
+    }
+
+    async function atualizar() {
+      try {
+        const resp = await fetch('/estado');
+        const data = await resp.json();
+
+        // Lógica de reset remoto: Limpa o gráfico se o Fuzzy enviou o sinal de reset
+        if (data.reset === true) {
+          samplesCount = 0; 
+          chart.data.labels = []; 
+          chart.data.datasets.forEach((dataset) => { dataset.data = []; }); 
+          chart.update();
+          // Impedimos que ele continue a processar o resto da iteração de forma desordenada
+          statusEl.textContent = 'Status: Reset de estado forçado.';
+          return; 
+        }
+
+        if (data.status === 'aguardando_dados') {
+          statusEl.textContent = 'Status: aguardando dados do MQTT...';
+          atualizarStatusControle(false);
+          return;
+        }
+
+        // LÓGICA DE CONTROLE DE ESTADO LIDA VIA MQTT
+        if (data.simulacao_rodando !== undefined) {
+          atualizarStatusControle(data.simulacao_rodando);
+        }
+
+        statusEl.textContent = 'Status: recebendo dados do controle fuzzy (MQTT)';
+
+        if (typeof data.temperatura === 'number') {
+          tempEl.textContent = data.temperatura.toFixed(2);
+        }
+        if (typeof data.potencia === 'number') {
+          potEl.textContent = data.potencia.toFixed(2);
+        }
+        if (typeof data.erro === 'number') {
+          erroEl.textContent = data.erro.toFixed(2);
+        }
+        if (typeof data.varErro === 'number') {
+          varErroEl.textContent = data.varErro.toFixed(2);
+        }
+        if (data.setpoint !== undefined) {
+          spEl.textContent = data.setpoint;
+          spButtons.forEach(btn => {
+            const val = parseInt(btn.dataset.sp, 10);
+            btn.classList.toggle('active', val === data.setpoint);
+          });
+        }
+        if (data.qest !== undefined) {
+          qestEl.textContent = data.qest;
+        }
+        if (data.text !== undefined) {
+          textEl.textContent = data.text;
+        }
+
+        // Atualiza gráfico
+        if (chart && typeof data.temperatura === 'number' && data.setpoint !== undefined) {
+          samplesCount += 1;
+          chart.data.labels.push(samplesCount.toString());
+          chart.data.datasets[0].data.push(data.temperatura);
+          chart.data.datasets[1].data.push(data.setpoint);
+
+          const MAX_POINTS = 200;
+          if (chart.data.labels.length > MAX_POINTS) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+            chart.data.datasets[1].data.shift();
+          }
+
+          chart.update('none');
+        }
+      } catch (e) {
+        statusEl.textContent = 'Status: erro ao consultar /estado';
+        console.error(e);
+      }
+    }
+
+    
+    async function atualizarAlerta() {
+      try {
+        const resp = await fetch('/alerta');
+        if (!resp.ok) {
+          return;
+        }
+        const data = await resp.json();
+
+        if (data.temAlerta && data.dados) {
+          const alerta = data.dados;
+          let msg = alerta.mensagem || 'Alerta crítico no data center.';
+
+          if (alerta.tipo) {
+            msg = '[' + alerta.tipo + '] ' + msg;
+          }
+
+          if (alerta.temperatura !== undefined) {
+            const t = typeof alerta.temperatura === 'number'
+              ? alerta.temperatura.toFixed(2)
+              : alerta.temperatura;
+            msg += ' (T = ' + t + ' °C)';
+          }
+
+          alertMessageEl.textContent = msg;
+          if (alertBanner) {
+            alertBanner.style.display = 'block';
+          }
+        } else {
+          // Sem alerta: esconde o banner
+          if (alertBanner) {
+            alertBanner.style.display = 'none';
+          }
+        }
+      } catch (e) {
+        console.error('Erro ao consultar /alerta', e);
+      }
+    }
+
+    async function mudarSetpoint(sp) {
+      try {
+        const resp = await fetch('/setpoint', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ setpoint: sp })
+        });
+
+        if (!resp.ok) {
+          const txt = await resp.text();
+          console.error('Erro ao enviar setpoint:', txt);
+          statusEl.textContent = 'Status: erro ao enviar setpoint';
+          return;
+        }
+
+        const data = await resp.json();
+        statusEl.textContent = `Status: setpoint enviado (${data.setpoint} °C)`;
+
+        // força atualização logo após mudar SP
+        atualizar();
+
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = 'Status: erro ao enviar setpoint';
+      }
+    }
+
+  
+    // Função para validar e enviar os dados injetados
+    function enviarDadosManuais() {
+      const erro = parseFloat(document.getElementById('inputErro').value);
+      const deltaErro = parseFloat(document.getElementById('inputDeltaErro').value);
+      const text = parseFloat(document.getElementById('inputText').value);
+      const carga = parseFloat(document.getElementById('inputCarga').value);
+
+      // Validação de Faixas de Entrada (Fuzzy Universes)
+      if (erro < -16 || erro > 16.5) {
+          alert("Erro: O valor deve estar entre -16 e 16.5.");
+          return;
+      }
+      if (deltaErro < -2 || deltaErro > 2.05) {
+          alert("Delta Erro: O valor deve estar entre -2 e 2.05.");
+          return;
+      }
+      if (text < 10 || text > 40) {
+          alert("Temperatura Externa: O valor deve estar entre 10 e 40.");
+          return;
+      }
+      if (carga < 0 || carga > 100) {
+          alert("Carga Térmica: O valor deve estar entre 0 e 100.");
+          return;
+      }
+
+      const dados = {
+          erro: erro,
+          deltaErro: deltaErro,
+          text: text,
+          carga: carga
+      };
+
+      fetch('/injetar', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(dados),
+      })
+      .then(response => response.json())
+      .then(data => {
+          alert("Dados manuais injetados com sucesso!");
+          // O Dashboard precisa parar de rodar para que a injeção seja útil.
+      })
+      .catch((error) => {
+          console.error('Erro ao injetar dados:', error);
+          alert("Erro ao injetar dados.");
+      });
+    }
+
+    // Adicione esta função ao seu JS principal
+    function enviarComando24h() {
+        if (!confirm("Isso iniciará uma simulação de 24h (288 iterações) e pode demorar. Deseja continuar?")) {
+            return;
+        }
+        
+        fetch('/controle_24h', {
+            method: 'POST',
+            // ... (headers e body vazios) ...
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert('Simulação de 24h iniciada. Acompanhe o gráfico!');
+            // Você pode querer desabilitar o botão até o fim do ciclo
+        });
+    }
+
+    spButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sp = parseInt(btn.dataset.sp, 10);
+        mudarSetpoint(sp);
+      });
+    });
+
+    setupChart();
+    setInterval(atualizar, 100); // atualização rápida
+    atualizar();
+    atualizarAlerta();
+  </script>
+</body>
+</html>

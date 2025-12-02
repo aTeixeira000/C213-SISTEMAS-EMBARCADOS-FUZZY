@@ -39,7 +39,6 @@ def on_message_sub(client, userdata, msg):
     except Exception as e:
         print("Erro ao processar mensagem MQTT:", e)
 
-
 def mqtt_loop_sub():
     client = mqtt.Client(client_id="c213_dashboard_sub")
     client.on_connect = on_connect_sub
@@ -118,6 +117,13 @@ def injetar():
     pub_client.publish(TOPIC_INJECAO, payload)
     print(f"[HTTP] Dados manuais injetados via MQTT: {payload}")
     return jsonify({"status": "ok", "dados": data})
+
+@app.route("/controle_24h", methods=["POST"])
+def controle_24h():
+    payload = json.dumps({"comando": "iniciar_24h"})
+    pub_client.publish(TOPIC_COMANDO, payload)
+    print("[HTTP] Comando INICIAR_24H enviado via MQTT.")
+    return jsonify({"status": "ok", "comando": "iniciar_24h"})
 
 # ---------- MAIN ----------
 
