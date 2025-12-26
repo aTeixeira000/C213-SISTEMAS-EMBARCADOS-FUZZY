@@ -1,6 +1,7 @@
 import numpy as np
 import skfuzzy as fuzz
 from skfuzzy import control as ctrl
+import matplotlib.pyplot as plt
 import paho.mqtt.client as mqtt
 import time
 import json
@@ -74,6 +75,9 @@ errotemp['ZE'] = fuzz.trimf(errotemp.universe, [-1, 0, 1])
 errotemp['PP'] = fuzz.trimf(errotemp.universe, [0, 2, 5])
 errotemp['MP'] = fuzz.trapmf(errotemp.universe, [2, 5, 16, 16])
 
+errotemp.view()
+#plt.show()
+
 # Delta Erro (varerrotemp)
 varerrotemp['MN'] = fuzz.trapmf(varerrotemp.universe, [-2, -2, -1.5, -1])
 varerrotemp['PN'] = fuzz.trimf(varerrotemp.universe, [-1.5, -1, 0])
@@ -81,12 +85,18 @@ varerrotemp['ZE'] = fuzz.trimf(varerrotemp.universe, [-0.5, 0, 0.5])
 varerrotemp['PP'] = fuzz.trimf(varerrotemp.universe, [0, 1, 1.5])
 varerrotemp['MP'] = fuzz.trapmf(varerrotemp.universe, [1, 1.5, 2, 2])
 
+varerrotemp.view()
+plt.show()
+
 # Potência base
 potencia_base['MB'] = fuzz.trimf(potencia_base.universe, [0, 0, 25])
 potencia_base['B']  = fuzz.trimf(potencia_base.universe, [0, 25, 50])
 potencia_base['M']  = fuzz.trimf(potencia_base.universe, [25, 50, 75])
 potencia_base['A']  = fuzz.trimf(potencia_base.universe, [50, 75, 100])
 potencia_base['MA'] = fuzz.trimf(potencia_base.universe, [75, 100, 100])
+
+#potencia_base.view()
+#plt.show()
 
 # Temperatura externa
 text['Fria']   = fuzz.trapmf(text.universe, [10, 10, 18, 22])
@@ -98,6 +108,9 @@ cargatermica['Baixa'] = fuzz.trapmf(cargatermica.universe, [0, 0, 25, 40])
 cargatermica['Media'] = fuzz.trimf(cargatermica.universe, [30, 40, 70])
 cargatermica['Alta']  = fuzz.trapmf(cargatermica.universe, [60, 80, 100, 100])
 
+#cargatermica.view()
+#plt.show()
+
 # Ajuste de potência (delta P)
 ajuste_potencia['MN'] = fuzz.trapmf(ajuste_potencia.universe, [-20, -20, -10, -5])
 ajuste_potencia['N']  = fuzz.trimf(ajuste_potencia.universe, [-10, -5, 0])
@@ -105,6 +118,8 @@ ajuste_potencia['ZE'] = fuzz.trimf(ajuste_potencia.universe, [-5, 0, 5])
 ajuste_potencia['P']  = fuzz.trimf(ajuste_potencia.universe, [0, 5, 10])
 ajuste_potencia['MP'] = fuzz.trapmf(ajuste_potencia.universe, [5, 10, 20, 20])
 
+#ajuste_potencia.view()
+#plt.show()
 
 # --- REGRAS E CONTROLADORES ---
 Rule = ctrl.Rule
@@ -322,10 +337,10 @@ def executar_simulacao_24h():
         varerro_input = np.clip(varerroTemp_calc, -VARERRO_MAX, VARERRO_MAX)
 
         # --- 3.3. GANHO KP CONDICIONAL (Mapa Otimizado) ---
-        if sp == 16: Kp = 0.57
-        elif sp == 22: Kp = 0.28
-        elif sp == 25: Kp = 0.09
-        elif sp == 32: Kp = 0.01
+        if sp == 16: Kp = 0.75
+        elif sp == 22: Kp = 0.45
+        elif sp == 25: Kp = 0.45
+        elif sp == 32: Kp = 0.3
         else: Kp = 0.35
 
         # --- 3.4. CÁLCULO FUZZY ---
